@@ -1,0 +1,304 @@
+static int read_arc(const char *file, arc_t *arcs, int rcv, int type)		
+{
+	FILE *fp;
+	gtime_t ti, t_1 = { 0 };
+	ambd_t ambd0 = { 0 };
+	arcInf arc0 = { 0 };
+
+	int i, slip, sat, cout, ns, stat = 0, flag, sflag[MAXSAT] = { 0 }, sflag_1[MAXSAT] = { 0 };
+	double NN, N5, N4, LC_1, V, azel, temp, std, std1, std2, thread;
+	char buff[256] = "", ymd[12] = "", dms[10] = "", satid[8] = "", time[32] = "";
+
+	if (!(fp = fopen(file, "r"))) {
+		trace(2, "input file open error: file=%s\n", file);
+		return 0;
+	}
+
+	for (i = 0; i < MAXSAT; i++) { ambd[i] = ambd0;	 arcs->narc[rcv][i] = 0;}
+	ns = arcs->n;		
+	while (fgets(buff, sizeof(buff), fp)) {			
+		if (sscanf(buff, "%s %s %s %d %lf %lf %lf %lf %lf %lf %d %lf %lf %lf %d", &ymd, &dms, satid, &slip, &temp, &temp, &N5, &N4, &std1, &std2, &flag, &temp, &temp, &azel, &temp) < 15) {			//修改
+			continue;
+		}
+		sprintf(time, "%s %s", ymd, dms);
+		str2time(time, 0, 32, &ti);
+		sat = (unsigned char)satid2no(satid) - 1;
+		switch (type) {
+			case 0: NN = N5; std = std1; thread = THRESWL; break;
+			case 1: NN = N4; std = std2; thread = THRESEL; break;
+			default: NN = 0;
+		}
+
+		if (timediff(ti, t_1) != 0.0) {
+			for (i = 0; i < MAXSAT; i++) {
+				if (sflag_1[i] && !sflag[i]) {					// 前后历元数据（新历元的前历元&前前历元）
+					if (ambd[i].n > 50 && ambd[i].LCv < thread) {
+						initarc(&arc0, rcv, i, ambd[i].ts, timeadd(t_1, -30), ambd[i].n, ambd[i].LC, ambd[i].LCv);
+						if ((stat = addarc(arcs, &arc0)) < 0) break;
+					}
+					ambd[i].n = ambd[i].LC = ambd[i].LCv = 0.0;
+				}
+				sflag_1[i] = sflag[i];
+				sflag[i] = 0;				
+			}
+			t_1 = ti;
+		}
+		sflag[sat] = 1;
+		if (slip) {												// 周跳
+			if (ambd[sat].n > 50 && ambd[sat].LCv < thread) {
+				initarc(&arc0, rcv, sat, ambd[sat].ts, timeadd(t_1, -30), ambd[sat].n, ambd[sat].LC, ambd[sat].LCv);
+				if ((stat = addarc(arcs, &arc0)) < 0) break;
+			}
+			ambd[sat].n = ambd[sat].LC = ambd[sat].LCv = 0.0;
+		}
+		if (NN && flag) {
+			ambd[sat].n += 1;
+			if (ambd[sat].n == 1) {
+				ambd[sat].ts = ti;
+				ambd[sat].LC = NN;
+				ambd[sat].LCv = std;
+			}
+			if (ambd[sat].LCv > std) {	
+				ambd[sat].LC = NN;
+				ambd[sat].LCv = std;
+			}
+		}
+	}
+	for (i = 0; i < MAXSAT; i++) {								// 最后历元
+		if (sflag[i]) {
+			if (ambd[i].n > 50 && ambd[i].LCv < thread) {
+				initarc(&arc0, rcv, i, ambd[i].ts, timeadd(t_1, -30), ambd[i].n, ambd[i].LC, ambd[i].LCv);
+				if ((stat = addarc(arcs, &arc0)) < 0) break;
+			}
+		}
+	}
+	if (arcs->n - ns < 10) arcs->n = ns;
+	fclose(fp);
+	return stat;
+}
+static void read_amb(const char *file, arc_t *arcs, amb_t *ambs, int rcv)				
+{
+	FILE *fp;
+	gtime_t ts, ti;
+	ambInf amb0;
+	char buff[256], ymd[12] = "", dms[10] = "", satid[8] = "", time[32] = "";
+	int i, j, k, slip, flag, nlock, ind, sat, sys, id, stat = 0, num[MAXIND][MAXSAT], exc[MAXIND][MAXSAT];
+	double temp, N3, sP, azel, NL, val[MAXIND][MAXSAT], std[MAXIND][MAXSAT], minstd[MAXIND][MAXSAT];
+	
+	str2time(stime, 0, 32, &ts);
+	for (i = 0; i < MAXIND; i++) for (j = 0; j < MAXSAT; j++) { minstd[i][j] = 1E4; exc[i][j] = 0; }
+
+	if (!(fp = fopen(file, "r"))) return;
+	while (fgets(buff, sizeof(buff), fp)) {
+		if (sscanf(buff, "%s %s %s %d %lf %lf %lf %lf %lf %lf %d %lf %lf %lf %d", &ymd, &dms, satid, &slip, &temp, &temp, &temp, &temp, &temp, &temp, &flag, &N3, &sP, &azel, &nlock) < 15) {
+			continue;
+		}
+		sprintf(time, "%s %s", ymd, dms);
+		str2time(time, 0, 32, &ti);
+		sat = (unsigned char)satid2no(satid) - 1;
+
+		if (!(sys = satsys(sat + 1, NULL)) || slip || !flag || nlock < 40 || sP > THRESNL || azel < 15) continue;
+		if ((ind = time2ind(ts, ti, 0.25)) == -1) continue;
+
+		for (k = 0; k < arcs->narc[rcv][sat]; k++) {
+			id = arcs->index[rcv][sat][k];
+			if (arcs->data[id].flag && (timediff(arcs->data[id].ts, ti) < 0) && (timediff(arcs->data[id].te, ti) >= 0)) {
+				switch (sys) {
+					case SYS_GPS: NL = N3*(FREQ1 + FREQ2) / CLIGHT - arcs->data[id].NN * FREQ2 / (FREQ1 - FREQ2);	break;
+					case SYS_GAL: NL = N3*(FREQ1 + FREQ5) / CLIGHT - arcs->data[id].NN * FREQ5 / (FREQ1 - FREQ5);	break;
+					case SYS_CMP: NL = N3*(FREQ1_CMP + FREQ3_CMP) / CLIGHT - arcs->data[id].NN * FREQ3_CMP / (FREQ1_CMP - FREQ3_CMP);	break;
+					default: continue;
+				}
+				if (minstd[ind][sat] > sP) {
+					val[ind][sat] = NL;
+					std[ind][sat] = minstd[ind][sat] = sP;
+					num[ind][sat] = nlock;
+					exc[ind][sat] = 1;
+				}
+			}
+		}
+	}
+	fclose(fp);
+	for (i = 0; i < MAXIND; i++) {
+		for (j = 0; j < MAXSAT; j++) {
+			if (exc[i][j]) {
+				initamb(&amb0, i, rcv, j, val[i][j], std[i][j], num[i][j]);
+				if ((stat = addamb(ambs, &amb0)) < 0) return stat;
+			}
+		}
+	}
+	return stat;
+}
+
+static int fix_NL(rtk_t *rtk, const obsd_t *obs, const nav_t *nav, int *isat1, int *isat2, int n, int *NW)
+{
+	int i, j, k, f, m = 0, fixN = 0, sat1, sat2, stat = 0;
+	double *B1, *N1, *D, *E, *Q, *Z, *LN, *ZN, *ZIF, LC, nl, lam_NL, lam1, lam2, C1, C2, s[2], freq[NFREQ] = { 0.0 };
+	fcbd_t *fcb;
+
+	if (!(fcb = selfcb(nav, rtk->sol.time))) return 0;
+
+	B1 = zeros(n, 1);		N1 = zeros(n, 2);
+	D = zeros(rtk->nx, n);	E = mat(rtk->nx, n);	Q = mat(n, n);
+	for (i = 0; i<n; i++) {
+		sat1 = obs[isat1[i]].sat;
+		sat2 = obs[isat2[i]].sat;
+
+		if (NW[i] > MAXCAMB - 1 || fcb->bias[sat1 - 1][0] > 100 || fcb->bias[sat2 - 1][0] > 100) continue;
+
+		/* float narrow-lane ambiguity (cycle) */
+		j = IB(sat1, 0, &rtk->opt);
+		k = IB(sat2, 0, &rtk->opt);
+		for (f = 0; f < NFREQ; f++) freq[f] = sat2freq(sat1, obs[isat1[i]].code[f], nav);
+		lam1 = CLIGHT / freq[0];
+		lam2 = CLIGHT / freq[1];
+		C1 = freq[0] / (freq[0] - freq[1]);
+		C2 = freq[1] / (freq[0] - freq[1]);
+		LC = C1*(rtk->xa[j] - rtk->xa[k]) / lam1 - C2*(rtk->xa[j + MAXSAT] - rtk->xa[k + MAXSAT]) / lam2 - C2*NW[i];	
+		nl = fcb->bias[sat1 - 1][0] - fcb->bias[sat2 - 1][0];
+		B1[m] = LC - nl;
+
+		/* validation of narrow-lane ambiguity */
+		if (fabs(FROUND(B1[m])) < 0.2/*rtk->opt.thresar[2]*/) {
+			isat1[m] = isat1[i];
+			isat2[m] = isat2[i];
+			D[j + m*rtk->nx] =  C1*1.0 / lam1;
+			D[k + m*rtk->nx] = -C1*1.0 / lam1;
+			D[j + MAXSAT + m*rtk->nx] = -C2*1.0 / lam2;
+			D[k + MAXSAT + m*rtk->nx] =  C2*1.0 / lam2;
+			NW[m++] = NW[i];
+#if 0
+			char id1[32], id2[32];
+			satno2id(obs[isat1[i]].sat, id1);
+			satno2id(obs[isat2[i]].sat, id2);
+			trace(1, "NL-MM:%s--%s %6.3f\n", id1, id2, FROUND(B1[m-1]));
+#endif
+		}
+	}
+
+	/* covariance of narrow-lane ambiguities */
+	matmul("NN", rtk->nx, m, rtk->nx, 1.0, rtk->Pa, D, 0.0, E);			
+	matmul("TN", m, m, rtk->nx, 1.0, D, E, 0.0, Q);					
+
+	Z = eye(m);		LN = mat(m, 1);		ZN = mat(m, 1);		ZIF = mat(m, 1);
+	if ((fixN = lambda_PAR(rtk, m, 2, B1, Q, Z, N1, s))) {				
+		for (i = 0; i < m; i++) {
+			sat1 = obs[isat1[i]].sat;
+			sat2 = obs[isat2[i]].sat;
+			for (f = 0; f < NFREQ; f++) freq[f] = sat2freq(sat1, obs[isat1[i]].code[f], nav);
+
+			LN[i] = freq[1] / (freq[0] - freq[1])*NW[i] + (fcb->bias[sat1 - 1][0] - fcb->bias[sat2 - 1][0]);			
+			ZN[i] = i < m - fixN ? 0.0 : N1[i - (m - fixN)];			
+		}
+		matmul("TN", m, 1, m, 1.0, Z, LN, 0.0, ZIF);	
+		for (i = 0; i < m; i++) ZIF[i] += ZN[i];
+
+		stat = fix_IF(rtk, obs, nav, isat1, isat2, Z, ZIF, m, fixN);									
+	}
+	free(Z);  free(LN); free(ZN); free(ZIF);
+	free(B1); free(N1); free(D);  free(E); free(Q);
+	return 	stat;
+}
+extern int lambda_PAR(rtk_t *rtk, int n, int m, const double *a, const double *Q, double *Z, double *F, double *s)			
+{
+	int i, j, k, info, fixN = 0;
+	double *L, *D, *z, *Lp, *Dp, *zp, P = 1.0;
+
+	if (n <= 0 || m <= 0) return 0;
+	L = zeros(n, n);	D = mat(n, 1);	z = mat(n, 1); 
+	Lp = mat(n, n);		Dp = mat(n, 1); zp = mat(n, 1);
+	/* LD (lower diaganol) factorization (Q=L'*diag(D)*L) */
+	if (!(info = LD(n, Q, L, D))) {
+
+		/* lambda reduction (z=Z'*a, Qz=Z'*Q*Z=L'*diag(D)*L) */
+		reduction(n, L, D, Z);
+
+		matmul("TN", n, 1, n, 1.0, Z, a, 0.0, z);	  /* z=Z'*a */
+		//matmul("TN", n, n, n, 1.0, Z, Q, 0.0, ZQ);
+		//matmul("NN", n, n, n, 1.0, ZQ, Z, 0.0, Q);	  // Qzz
+
+		for (k = n; k >= 4; k--) {			
+			P = 1.0;
+			for (i = n - k; i < n; i++) {
+				P = P*(2 * (normcdf(0.5 / sqrt(D[i]))) - 1); //成功率
+			}
+			if (P < 0.995) continue;
+
+			for (i = 0; i < k; i++) {
+				for (j = 0; j < k; j++) {
+					Lp[j + i*k] = L[(n - k + j) + (n - k + i)*n];
+				}
+				Dp[i] = D[(n - k) + i];
+				zp[i] = z[(n - k) + i];
+			}
+			/* mlambda search */
+			if (!(info = search(k, m, Lp, Dp, zp, F, s))) {			  /* returns 0 if no error */					
+				rtk->sol.ratio = MIN(s[1] / s[0], 999.9);
+				if (rtk->opt.thresar[0] > 0.0 && rtk->sol.ratio >= rtk->opt.thresar[0]) {
+					fixN = k;	break;
+				}
+			}
+		}
+	}
+	free(L);  free(D);  free(z); 
+	free(Lp); free(Dp); free(zp);
+	return fixN;
+}
+static int fix_IF(rtk_t *rtk, const obsd_t *obs, const nav_t *nav, const int *isat1, const int *isat2, 
+	double *Z, double*NZ, int m, int fixN)				
+{
+	if (fixN < 4) return 0;
+
+	int i, j, k, f, sat1, sat2, info, stat = 1;
+	double *xp, *Pp, *L0, *H0, *LZ, *v, *H, *R, C1, C2, CC, freq[NFREQ] = { 0.0 };
+
+	xp = mat(rtk->nx, 1); Pp = mat(rtk->nx, rtk->nx);
+	L0 = mat(m, 1);		  H0 = zeros(rtk->nx, m);      LZ = mat(m, 1);
+	v = zeros(fixN, 1);   H = zeros(rtk->nx, m);       R = zeros(fixN, fixN);
+
+	matcpy(xp, rtk->xa, rtk->nx, 1);
+	matcpy(Pp, rtk->Pa, rtk->nx, rtk->nx);
+	/* constraints to fixed ambiguities */
+	for (i = 0; i < m; i++) {
+		sat1 = obs[isat1[i]].sat;
+		sat2 = obs[isat2[i]].sat;
+		j = IB(sat1, 0, &rtk->opt);
+		k = IB(sat2, 0, &rtk->opt);
+
+		for (f = 0; f < NFREQ; f++) freq[f] = sat2freq(sat1, obs[isat1[i]].code[f], nav);
+		CC = (freq[0] + freq[1]) / CLIGHT;
+		C1 = SQR(freq[0]) / (SQR(freq[0]) - SQR(freq[1]));
+		C2 = SQR(freq[1]) / (SQR(freq[0]) - SQR(freq[1]));
+
+		L0[i] = CC*(C1*(rtk->xa[j] - rtk->xa[k]) - C2*(rtk->xa[j + MAXSAT] - rtk->xa[k + MAXSAT]));
+		H0[j + i*rtk->nx] = C1*CC;
+		H0[k + i*rtk->nx] = -C1*CC;
+		H0[j + MAXSAT + i*rtk->nx] = -C2*CC;
+		H0[k + MAXSAT + i*rtk->nx] = C2*CC;
+	}
+
+	matmul("TN", m, 1, m, 1.0, Z, L0, 0.0, LZ);
+	matmul("NN", rtk->nx, m, m, 1.0, H0, Z, 0.0, H);
+
+	for (i = 0; i < fixN; i++) {
+		v[i] = NZ[(m - fixN) + i] - LZ[(m - fixN) + i];
+
+		for (j = 0; j < rtk->nx; j++) {
+			H[j + i*(rtk->nx)] = H[j + ((m - fixN) + i)*(rtk->nx)];
+		}
+
+		R[i + i*fixN] = SQR(CONST_AMB);
+	}
+
+	/* update states with constraints */
+	if ((info = filter(xp, Pp, H, v, R, rtk->nx, fixN))) {
+		trace(1, "filter error (info=%d)\n", info);
+		stat = 0;
+	}
+	if (stat) {
+		matcpy(rtk->xa, xp, rtk->nx, 1);
+		matcpy(rtk->Pa, Pp, rtk->nx, rtk->nx);
+	}
+	free(xp); free(Pp); free(L0); free(H0); free(LZ); free(v);  free(H);  free(R);
+	return stat;
+}
