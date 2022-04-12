@@ -4071,7 +4071,7 @@ extern int rtk_uncompress(const char *file, char *uncfile)
 		strcpy(uncfile, tmpfile); uncfile[p - tmpfile] = '\0';
 		
 #ifdef WIN32
-		sprintf(cmd, "../thirdParty/Win/gzip -f -d -c \"%s\" > \"%s\"", tmpfile, uncfile);
+		sprintf(cmd, "..\\thirdParty\\Win\\gzip -f -d -c \"%s\" > \"%s\"", tmpfile, uncfile);
 #else
 		sprintf(cmd, "gzip -f -d -c \"%s\" > \"%s\"", tmpfile, uncfile);
 #endif
@@ -4115,7 +4115,7 @@ extern int rtk_uncompress(const char *file, char *uncfile)
 		uncfile[p - tmpfile + 3] = *(p + 3) == 'D' ? 'O' : 'o';
 
 #ifdef WIN32
-		sprintf(cmd, "../thirdParty/Win/crx2rnx < \"%s\" > \"%s\"", tmpfile, uncfile);
+		sprintf(cmd, "..\\thirdParty\\Win\\crx2rnx < \"%s\" > \"%s\"", tmpfile, uncfile);
 #else
 		sprintf(cmd, "../thirdParty/Linux/crx2rnx < \"%s\" > \"%s\"", tmpfile, uncfile);
 #endif

@@ -16,8 +16,11 @@
 #define NMAX_STA    2048            /* max number of stations */
 #define NMAX_TYPE   256             /* max number of data types */
 #define NMAX_URL    1024            /* max number of urls in opptions file */
-
+#ifndef WIN32
 #define FTP_CMD     "wget"          /* ftp/http command */
+#else
+#define FTP_CMD     "..\\thirdParty\\Win\\wget"    /* ftp/http command */
+#endif
 #define FTP_TIMEOUT 60              /* ftp/http timeout (s) */
 #define FTP_LISTING ".listing"      /* ftp/http listing file */
 #define FTP_NOFILE  2048            /* ftp error no file */
@@ -869,9 +872,9 @@ extern void dl_test(gtime_t ts, gtime_t te, double ti, const url_t *urls,
     free(nc); free(nt);
 }
 /* download obs */
-extern int loadobs(gtime_t ts, gtime_t te,filopt_t *fopt) {		
+extern int loadobs(gtime_t ts, gtime_t te, filopt_t *fopt) {		
     // static char path[1024] = "ftp://gssc.esa.int/gnss/data/daily/%Y/%n/%S.%yd.gz";		//Rinex3
-    static	char path[1024] = "ftp://igs.ign.fr/pub/igs/data/%Y/%n/%S.%yd.gz";				//Rinex3
+    static char path[1024] = "ftp://igs.ign.fr/pub/igs/data/%Y/%n/%S.%yd.gz";				//Rinex3
     // static char path[1024] = "ftp://igs.bkg.bund.de/IGS/obs/%Y/%n/%S.%yd.gz";									
 	url_t urls;
 	char station[550][12];
