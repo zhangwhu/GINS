@@ -28,11 +28,11 @@
 #include "rtklib.h"
 
 /* system options buffer -----------------------------------------------------*/
-static prcopt_t prcopt_;				//配置文件
+static prcopt_t prcopt_;				
 static solopt_t solopt_;
 static filopt_t filopt_;
 static int antpostype_[2];
-static double elmask_,elmaskar_,elmaskhold_;
+static double elmask_,elmaskar_;
 static double antpos_[2][3];
 static char exsats_[1024];
 static char snrmask_[NFREQ][1024];
@@ -46,6 +46,7 @@ static char snrmask_[NFREQ][1024];
 #define TRPOPT  "0:off,1:saas,2:sbas,3:est-ztd,4:est-ztdgrad,5:ztd"
 #define EPHOPT  "0:brdc,1:precise,2:brdc+sbas,3:brdc+ssrapc,4:brdc+ssrcom"
 #define NAVOPT  "1:gps+2:sbas+4:glo+8:gal+16:qzs+32:comp"
+#define OUTOPT  "1:status+2:iono+4:ambi+8:resi+16:qual"
 #define GAROPT  "0:off,1:on,2:autocal,3:fix-and-hold"
 #define SOLOPT  "0:llh,1:xyz,2:enu,3:nmea"
 #define TSYOPT  "0:gpst,1:utc,2:jst"
@@ -56,14 +57,19 @@ static char snrmask_[NFREQ][1024];
 #define STAOPT  "0:all,1:single"
 #define STSOPT  "0:off,1:state,2:residual"
 #define ARMOPT  "0:off,1:continuous,2:instantaneous,3:fix-and-hold,6:ppp-ar,7:ppp-ar-ils"
+#define ARTYPE  "0:overall-ar,1:part-ar1,2:part-ar2"
 #define POSOPT  "0:llh,1:xyz,2:single,3:posfile,4:rinexhead,5:rtcm,6:raw"
 #define TIDEOPT "0:off,1:on,2:otl"
 #define PHWOPT  "0:off,1:on,2:precise"
+#define DYNOPT  "0:off,1:accel,2:sins"
 
-EXPORT opt_t sysopts[]={													//配置文件读取形式				
+EXPORT opt_t sysopts[]={														
 	/*name			  format			var				 comment*/
     {"pos1-posmode",    3,  (void *)&prcopt_.mode,       MODOPT },
-	{"pos1-interval",   1,  (void *)&prcopt_.interval,   ""     },
+    {"pos1-stime",      4,  (void *)&prcopt_.ts,         ""     },
+    {"pos1-etime",      4,  (void *)&prcopt_.te,         ""     },
+	{"pos1-interval",   1,  (void *)&prcopt_.ti,         ""     },
+    {"pos1-reinit",     1,  (void *)&prcopt_.reinit,     "sec"  }, 
     {"pos1-frequency",  3,  (void *)&prcopt_.nf,         FRQOPT },
     {"pos1-soltype",    3,  (void *)&prcopt_.soltype,    TYPOPT },
     {"pos1-elmask",     1,  (void *)&elmask_,            "deg"  },
@@ -72,7 +78,7 @@ EXPORT opt_t sysopts[]={													//配置文件读取形式
     {"pos1-snrmask_L1", 2,  (void *)snrmask_[0],         ""     },
     {"pos1-snrmask_L2", 2,  (void *)snrmask_[1],         ""     },
     {"pos1-snrmask_L5", 2,  (void *)snrmask_[2],         ""     },
-    {"pos1-dynamics",   3,  (void *)&prcopt_.dynamics,   SWTOPT },
+    {"pos1-dynamics",   3,  (void *)&prcopt_.dynamics,   DYNOPT },
     {"pos1-tidecorr",   3,  (void *)&prcopt_.tidecorr,   TIDEOPT},
     {"pos1-ionoopt",    3,  (void *)&prcopt_.ionoopt,    IONOPT },
     {"pos1-tropopt",    3,  (void *)&prcopt_.tropopt,    TRPOPT },
@@ -83,41 +89,46 @@ EXPORT opt_t sysopts[]={													//配置文件读取形式
     {"pos1-posopt4",    3,  (void *)&prcopt_.posopt[3],  SWTOPT },
     {"pos1-posopt5",    3,  (void *)&prcopt_.posopt[4],  SWTOPT },
     {"pos1-posopt6",    3,  (void *)&prcopt_.posopt[5],  SWTOPT },
+    {"pos1-posopt7",    3,  (void *)&prcopt_.posopt[6],  SWTOPT },     
+    {"pos1-posopt8",    3,  (void *)&prcopt_.posopt[7],  SWTOPT },
+    {"pos1-posopt9",    3,  (void *)&prcopt_.posopt[8],  SWTOPT },    
     {"pos1-exclsats",   2,  (void *)exsats_,             "prn ..."},
     {"pos1-navsys",     0,  (void *)&prcopt_.navsys,     NAVOPT },
+    {"pos1-outopt",     0,  (void *)&prcopt_.outopt,     OUTOPT },
+
+    {"pos2-maxage",     1,  (void *)&prcopt_.maxtdiff,   "sec"  },
+    {"pos2-rejion",     0,  (void *)&prcopt_.maxrej[1],  "n"    },
+    {"pos2-rejifb",     0,  (void *)&prcopt_.maxrej[2],  "n"    },
+    {"pos2-rejamb",     0,  (void *)&prcopt_.maxrej[3],  "n"    },
+    {"pos2-acctime",    0,  (void *)&prcopt_.acctime,    "sec"  },
+    {"pos2-oution",     0,  (void *)&prcopt_.maxout[1],  "n"    },
+    {"pos2-outifb",     0,  (void *)&prcopt_.maxout[2],  "n"    },
+    {"pos2-outamb",     0,  (void *)&prcopt_.maxout[3],  "n"    },
+    {"pos2-cslipgf12",  1,  (void *)&prcopt_.thresslipgf[0],"m" },
+	{"pos2-cslipmw12",  1,  (void *)&prcopt_.thresslipmw[0],"cout"},
+    {"pos2-cslipgf23",  1,  (void *)&prcopt_.thresslipgf[1],"m" },
+	{"pos2-cslipmw23",  1,  (void *)&prcopt_.thresslipmw[1],"cout"},
+    {"pos2-maxgdop",    1,  (void *)&prcopt_.maxgdop,    ""     },
+    {"pos2-prithres",   1,  (void *)&prcopt_.threscheck[0],""     },
+    {"pos2-prothres",   1,  (void *)&prcopt_.threscheck[1],""     },
+    {"pos2-tdcthres",   1,  (void *)&prcopt_.threscheck[2],""     },
+    {"pos2-p12thres",   1,  (void *)&prcopt_.threscheck[3],""     },
+    {"pos2-sppthres",   1,  (void *)&prcopt_.threscheck[4],""     },
+    {"pos2-arthres",    1,  (void *)&prcopt_.threscheck[5],""     },
+    {"pos2-baselinelen",1,  (void *)&prcopt_.baseline[0],"m"    },
+    {"pos2-baselinesig",1,  (void *)&prcopt_.baseline[1],"m"    },
+
+    {"pos3-armode",     3,  (void *)&prcopt_.modear,     ARMOPT },
+    {"pos3-artype",     3,  (void *)&prcopt_.typear,     ARTYPE },
+    {"pos3-arelmask",   1,  (void *)&elmaskar_,          "deg"  },
+    {"pos3-arlockcnt",  0,  (void *)&prcopt_.minlock,    ""     },
+    {"pos3-arminsats",  0,  (void *)&prcopt_.minfixsats, ""     },
+    {"pos3-arthresel",  1,  (void *)&prcopt_.thresar[0], ""     },
+    {"pos3-arthreswl",  1,  (void *)&prcopt_.thresar[1], ""     },
+    {"pos3-arthresnl",  1,  (void *)&prcopt_.thresar[2], ""     },
+    {"pos3-arratio",    1,  (void *)&prcopt_.thresar[3], ""     },
     
-    {"pos2-armode",     3,  (void *)&prcopt_.modear,     ARMOPT },
-    {"pos2-gloarmode",  3,  (void *)&prcopt_.glomodear,  GAROPT },
-    {"pos2-bdsarmode",  3,  (void *)&prcopt_.bdsmodear,  SWTOPT },
-	{"pos2-arfilter",   3,  (void *)&prcopt_.arfilter,   SWTOPT },
-    {"pos2-arthres",    1,  (void *)&prcopt_.thresar[0], ""     },
-    {"pos2-arthres1",   1,  (void *)&prcopt_.thresar[1], ""     },
-    {"pos2-arthres2",   1,  (void *)&prcopt_.thresar[2], ""     },
-    {"pos2-arthres3",   1,  (void *)&prcopt_.thresar[3], ""     },
-    {"pos2-arthres4",   1,  (void *)&prcopt_.thresar[4], ""     },
-    {"pos2-varholdamb", 1,  (void *)&prcopt_.varholdamb, "cyc^2"},
-    {"pos2-gainholdamb",1,  (void *)&prcopt_.gainholdamb,""     },
-    {"pos2-arlockcnt",  0,  (void *)&prcopt_.minlock,    ""     },
-	{"pos2-minfixsats", 0,  (void *)&prcopt_.minfixsats, ""     },
-	{"pos2-minholdsats",0,  (void *)&prcopt_.minholdsats,""     },
-    {"pos2-mindropsats",0,  (void *)&prcopt_.mindropsats,""     },
-	{"pos2-rcvstds",    3,  (void *)&prcopt_.rcvstds,    SWTOPT },
-    {"pos2-arelmask",   1,  (void *)&elmaskar_,          "deg"  },
-    {"pos2-arminfix",   0,  (void *)&prcopt_.minfix,     ""     },
-    {"pos2-armaxiter",  0,  (void *)&prcopt_.armaxiter,  ""     },
-    {"pos2-elmaskhold", 1,  (void *)&elmaskhold_,        "deg"  },
-    {"pos2-aroutcnt",   0,  (void *)&prcopt_.maxout,     ""     },
-    {"pos2-maxage",     1,  (void *)&prcopt_.maxtdiff,   "s"    },
-    {"pos2-syncsol",    3,  (void *)&prcopt_.syncsol,    SWTOPT },
-    {"pos2-slipthresgf",1,  (void *)&prcopt_.thresslipgf,"m"    },
-	{"pos2-slipthresmw",1,  (void *)&prcopt_.thresslipmw,"cout"	},
-    {"pos2-rejionno",   1,  (void *)&prcopt_.maxinno,    "m"    },
-    {"pos2-rejgdop",    1,  (void *)&prcopt_.maxgdop,    ""     },
-    {"pos2-niter",      0,  (void *)&prcopt_.niter,      ""     },
-    {"pos2-baselen",    1,  (void *)&prcopt_.baseline[0],"m"    },
-    {"pos2-basesig",    1,  (void *)&prcopt_.baseline[1],"m"    },
-    
-    {"out-solformat",   3,  (void *)&solopt_.posf,       SOLOPT },
+    {"out-solformat",   3,  (void *)&solopt_.posf,       SOLOPT },         
     {"out-outhead",     3,  (void *)&solopt_.outhead,    SWTOPT },
     {"out-outopt",      3,  (void *)&solopt_.outopt,     SWTOPT },
     {"out-outvel",      3,  (void *)&solopt_.outvel,     SWTOPT },
@@ -126,7 +137,6 @@ EXPORT opt_t sysopts[]={													//配置文件读取形式
     {"out-timendec",    0,  (void *)&solopt_.timeu,      ""     },
     {"out-degform",     3,  (void *)&solopt_.degf,       DFTOPT },
     {"out-fieldsep",    2,  (void *) solopt_.sep,        ""     },
-    {"out-outsingle",   3,  (void *)&prcopt_.outsingle,  SWTOPT },
     {"out-maxsolstd",   1,  (void *)&solopt_.maxsolstd,  "m"    },
     {"out-height",      3,  (void *)&solopt_.height,     HGTOPT },
     {"out-geoid",       3,  (void *)&solopt_.geoid,      GEOOPT },
@@ -135,21 +145,32 @@ EXPORT opt_t sysopts[]={													//配置文件读取形式
     {"out-nmeaintv2",   1,  (void *)&solopt_.nmeaintv[1],"s"    },
     {"out-outstat",     3,  (void *)&solopt_.sstat,      STSOPT },
     
-    {"stats-eratio1",   1,  (void *)&prcopt_.eratio[0],  ""     },			//L1（经典值：100）
-    {"stats-eratio2",   1,  (void *)&prcopt_.eratio[1],  ""     },			//L1以外其他
-    {"stats-errphase",  1,  (void *)&prcopt_.err[1],     "m"    },			//相位噪声：0.003
-    {"stats-errphaseel",1,  (void *)&prcopt_.err[2],     "m"    },			//相位噪声（与高度角相关）：0.003
+    {"stats-eratio1",   1,  (void *)&prcopt_.eratio[0],  ""     },			
+    {"stats-eratio2",   1,  (void *)&prcopt_.eratio[1],  ""     },
+    {"stats-eratio3",   1,  (void *)&prcopt_.eratio[2],  ""     },			
+    {"stats-errphase",  1,  (void *)&prcopt_.err[1],     "m"    },			
+    {"stats-errphaseel",1,  (void *)&prcopt_.err[2],     "m"    },		
     {"stats-errphasebl",1,  (void *)&prcopt_.err[3],     "m/10km"},
     {"stats-errdoppler",1,  (void *)&prcopt_.err[4],     "Hz"   },
-    {"stats-stdbias",   1,  (void *)&prcopt_.std[0],     "m"    },
-    {"stats-stdiono",   1,  (void *)&prcopt_.std[1],     "m"    },
-    {"stats-stdtrop",   1,  (void *)&prcopt_.std[2],     "m"    },
-    {"stats-prnaccelh", 1,  (void *)&prcopt_.prn[3],     "m/s^2"},
-    {"stats-prnaccelv", 1,  (void *)&prcopt_.prn[4],     "m/s^2"},
-    {"stats-prnbias",   1,  (void *)&prcopt_.prn[0],     "m"    },
-    {"stats-prniono",   1,  (void *)&prcopt_.prn[1],     "m"    },
-    {"stats-prntrop",   1,  (void *)&prcopt_.prn[2],     "m"    },
-    {"stats-prnpos",    1,  (void *)&prcopt_.prn[5],     "m"    },
+    {"stats-errtrop",   1,  (void *)&prcopt_.err[5],     "m"    },			
+    {"stats-erriono",   1,  (void *)&prcopt_.err[6],     "m"    },
+    {"stats-initpos",   1,  (void *)&prcopt_.P0[0],      "m"    },
+    {"stats-initclk",   1,  (void *)&prcopt_.P0[1],      "m"    },
+    {"stats-inittrp",   1,  (void *)&prcopt_.P0[2],      "m"    },
+    {"stats-inition",   1,  (void *)&prcopt_.P0[3],      "m"    },
+    {"stats-initifb",   1,  (void *)&prcopt_.P0[4],      "m"    },
+    {"stats-initamb",   1,  (void *)&prcopt_.P0[5],      "m"    },
+    {"stats-initvel",   1,  (void *)&prcopt_.P0[6],      "m"    },
+    {"stats-initacc",   1,  (void *)&prcopt_.P0[7],      "m"    },
+    {"stats-prnpos",    1,  (void *)&prcopt_.Qt[0],      "m"    },
+    {"stats-prntrp",    1,  (void *)&prcopt_.Qt[2],      "m"    },
+    {"stats-prnion",    1,  (void *)&prcopt_.Qt[3],      "m"    },
+    {"stats-prnifb",    1,  (void *)&prcopt_.Qt[4],      "m"    },
+    {"stats-prnamb",    1,  (void *)&prcopt_.Qt[5],      "m"    },
+    {"stats-prnacch",   1,  (void *)&prcopt_.Qt[6],      "m/s^2"},
+    {"stats-prnaccv",   1,  (void *)&prcopt_.Qt[7],      "m/s^2"},
+    {"stats-noisedcb",  1,  (void *)&prcopt_.noise[0],   "m"    },
+    {"stats-noiseifb",  1,  (void *)&prcopt_.noise[1],   "m"    },
     {"stats-clkstab",   1,  (void *)&prcopt_.sclkstab,   "s/s"  },
     
     {"ant1-postype",    3,  (void *)&antpostype_[0],     POSOPT },
@@ -169,14 +190,10 @@ EXPORT opt_t sysopts[]={													//配置文件读取形式
     {"ant2-antdele",    1,  (void *)&prcopt_.antdel[1][0],"m"   },
     {"ant2-antdeln",    1,  (void *)&prcopt_.antdel[1][1],"m"   },
     {"ant2-antdelu",    1,  (void *)&prcopt_.antdel[1][2],"m"   },
-    {"ant2-maxaveep",   0,  (void *)&prcopt_.maxaveep    ,""    },
-    {"ant2-initrst",    3,  (void *)&prcopt_.initrst,    SWTOPT },
     
     {"misc-timeinterp", 3,  (void *)&prcopt_.intpref,    SWTOPT },
-    {"misc-sbasatsel",  0,  (void *)&prcopt_.sbassatsel, "0:all"},
     {"misc-rnxopt1",    2,  (void *)prcopt_.rnxopt[0],   ""     },
     {"misc-rnxopt2",    2,  (void *)prcopt_.rnxopt[1],   ""     },
-    {"misc-pppopt",     2,  (void *)prcopt_.pppopt,      ""     },
     
     {"file-satantfile", 2,  (void *)&filopt_.satantp,    ""     },
     {"file-rcvantfile", 2,  (void *)&filopt_.rcvantp,    ""     },
@@ -193,15 +210,14 @@ EXPORT opt_t sysopts[]={													//配置文件读取形式
 	{"file-clkfile",	2,	(void *)&filopt_.clk,		 ""		},
 	{"file-sp3file",	2,	(void *)&filopt_.sp3,		 ""		},
 	{"file-fcbfile",	2,	(void *)&filopt_.fcb,		 ""		},
+    {"file-ifcbfile",	2,	(void *)&filopt_.ifcb,		 ""		},
 	{"file-brdcfile",	2,	(void *)&filopt_.brdc,		 ""		},
-	{"file-stecfile",	2,	(void *)&filopt_.stec,		 ""     },
-	{"file-tropfile",	2,	(void *)&filopt_.trop,		 ""     },
-	{"file-stanamefile",2,	(void *)&filopt_.staname,	 ""     },
-	{"file-indir",		2,	(void *)&filopt_.indir,		 ""     },
-	{"file-outdir",		2,	(void *)&filopt_.outdir,	 ""		},
-	{"file-snxfile",	2,	(void *)&filopt_.snx,		 ""		},
-	{"file-prosta",		2,  (void *)&filopt_.prosta,     ""     },
-	{"file-fcbposfile", 2,  (void *)&filopt_.fcbpos,	 ""		},
+	{"file-corrfile",	2,	(void *)&filopt_.corr,		 ""     },
+    {"file-rovobsfile", 2,  (void *)&filopt_.rovobs,	 ""		},
+    {"file-refobsfile", 2,  (void *)&filopt_.refobs,	 ""		},
+    {"file-outdir",     2,  (void *)&filopt_.outdir,	 ""		},
+    {"file-outfile1",   2,  (void *)&filopt_.outfile1,   ""     },
+    {"file-outfile2",   2,  (void *)&filopt_.outfile2,   ""     },
     {"",0,NULL,""} /* terminator */
 };
 /* discard space characters at tail ------------------------------------------*/
@@ -276,7 +292,8 @@ extern int str2opt(opt_t *opt, const char *str)
         case 0: *(int    *)opt->var=atoi(str); break;
         case 1: *(double *)opt->var=atof(str); break;
         case 2: strcpy((char *)opt->var,str);  break;
-        case 3: return str2enum(str,opt->comment,(int *)opt->var);			//解析模式非常方便
+        case 3: return str2enum(str, opt->comment, (int *)opt->var); 
+        case 4: str2time(str, 0, 32, (gtime_t *)opt->var); break; 		
         default: return 0;
     }
     return 1;
@@ -405,7 +422,6 @@ static void buff2sysopts(void)
     
     prcopt_.elmin     =elmask_    *D2R;
     prcopt_.elmaskar  =elmaskar_  *D2R;
-    prcopt_.elmaskhold=elmaskhold_*D2R;
     
     for (i=0;i<2;i++) {
         ps=i==0?&prcopt_.rovpos:&prcopt_.refpos;
@@ -447,7 +463,6 @@ static void buff2sysopts(void)
     /* number of frequency (4:L1+L5) */
     if (prcopt_.nf==4) {
         prcopt_.nf=3;
-        prcopt_.freqopt=1;
     }
 }
 /* options to system options buffer ------------------------------------------*/
@@ -459,7 +474,6 @@ static void sysopts2buff(void)
     
     elmask_    =prcopt_.elmin     *R2D;
     elmaskar_  =prcopt_.elmaskar  *R2D;
-    elmaskhold_=prcopt_.elmaskhold*R2D;
     
     for (i=0;i<2;i++) {
         ps=i==0?&prcopt_.rovpos:&prcopt_.refpos;
@@ -491,11 +505,6 @@ static void sysopts2buff(void)
             p+=sprintf(p,"%s%.0f",j>0?",":"",prcopt_.snrmask.mask[i][j]);
         }
     }
-    /* number of frequency (4:L1+L5) */
-    if (prcopt_.nf==3&&prcopt_.freqopt==1) {
-        prcopt_.nf=4;
-        prcopt_.freqopt=0;
-    }
 }
 /* reset system options to default ---------------------------------------------
 * reset system options to default
@@ -521,7 +530,6 @@ extern void resetsysopts(void)
     for (i=0;i<2;i++) antpostype_[i]=0;
     elmask_=15.0;
     elmaskar_=0.0;
-    elmaskhold_=0.0;
     for (i=0;i<2;i++) for (j=0;j<3;j++) {
         antpos_[i][j]=0.0;
     }
@@ -542,7 +550,7 @@ extern void getsysopts(prcopt_t *popt, solopt_t *sopt, filopt_t *fopt)
     buff2sysopts();
     if (popt) *popt=prcopt_;
     if (sopt) *sopt=solopt_;
-    if (fopt) *fopt=filopt_;
+    if (fopt) *fopt=filopt_;     
 }
 /* set system options ----------------------------------------------------------
 * set system options

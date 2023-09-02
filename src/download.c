@@ -12,14 +12,14 @@
 #include <sys/types.h>
 
 #include "rtklib.h"
-#pragma warning(disable:4996)
+
 #define NMAX_STA    2048            /* max number of stations */
 #define NMAX_TYPE   256             /* max number of data types */
 #define NMAX_URL    1024            /* max number of urls in opptions file */
 #ifndef WIN32
 #define FTP_CMD     "wget"          /* ftp/http command */
 #else
-#define FTP_CMD     "..\\thirdParty\\Win\\wget"    /* ftp/http command */
+#define FTP_CMD     "wget"          /* ftp/http command */
 #endif
 #define FTP_TIMEOUT 60              /* ftp/http timeout (s) */
 #define FTP_LISTING ".listing"      /* ftp/http listing file */
@@ -188,6 +188,7 @@ static int add_path(paths_t *paths, const char *remot, const char *dir)
         paths->path=paths_path;
     }
     remot2local(remot,dir,local);
+    // sprintf(local,"%s",dir);            // by zh 23-05-05
     
     paths->path[paths->n].remot=paths->path[paths->n].local=NULL;
     if (!(paths->path[paths->n].remot=(char *)malloc(1023/*strlen(remot)*/+1))||
@@ -393,29 +394,20 @@ static int test_list_2021(const path_t *path)
 		if ((p = strstr(buff, "->"))) *p = '\0';
 
 		for (i = strlen(buff) - 1; i >= 0; i--) {
-			if (strchr(" \r\n", buff[i])) buff[i] = '\0'; else break;			//buff��" \r\n">>>>'\0'
+			if (strchr(" \r\n", buff[i])) buff[i] = '\0'; else break;		
 		}
 		/* file as last field */
 		if ((p = strrchr(buff, ' '))) list = p + 1; else list = buff;
-		if (!strncmp(file, list, 4)/*!strncmp(file, list, 9)*/ && /*strstr(list, "d.gz")*/strstr(list, "_MO.crx.gz")) {
+		if (!strnicmp(file, list, 4) && strstr(list, "_MO.crx.gz")) {
 			strcpy(file, list);
 			fclose(fp);
 			return 1;			
 		}
-		
-#ifndef WIN32
-        if (!strncasecmp(file, list, 4) && strstr(list, "d.gz")) {
+        else if (!strnicmp(file, list, 4) && strstr(list, "d.gz")) {
 			strcpy(file, list);
 			fclose(fp);
 			return 1;
 		}
-#else 
-        if (!strnicmp(file, list, 4) && strstr(list, "d.gz")) {
-			strcpy(file, list);
-			fclose(fp);
-			return 1;
-		}
-#endif
 	}
 	fclose(fp);
 	return 0;
@@ -872,25 +864,27 @@ extern void dl_test(gtime_t ts, gtime_t te, double ti, const url_t *urls,
     free(nc); free(nt);
 }
 /* download obs */
-extern int loadobs(gtime_t ts, gtime_t te, filopt_t *fopt) {		
-    // static char path[1024] = "ftp://gssc.esa.int/gnss/data/daily/%Y/%n/%S.%yd.gz";		//Rinex3
-    static char path[1024] = "ftp://igs.ign.fr/pub/igs/data/%Y/%n/%S.%yd.gz";				//Rinex3
-    // static char path[1024] = "ftp://igs.bkg.bund.de/IGS/obs/%Y/%n/%S.%yd.gz";									
+extern int loadobs(gtime_t ts, gtime_t te, const char *infile, const char *outdir) {		
+    // char path[1024] = "ftp://gssc.esa.int/gnss/data/daily/%Y/%n/%S-%n.%yd.gz";		//Rinex3
+    char path[1024] = "ftp://igs.ign.fr/pub/igs/data/%Y/%n/%S-%n.%yd.gz";				//Rinex3
+    // char path[1024] = "ftp://igs.bkg.bund.de/IGS/obs/%Y/%n/%S-%n.%yd.gz";		
+    // char path[1024] = "ftp://igs.gnsswhu.cn//pub/gps/data/daily/%Y/%n/22d/%S-%n.%yd.gz";				//Rinex3	
+    /// char path[1024] = "http://119.96.165.202:15220/hbobs5s/%n/%s%n0.%yd.Z";						
 	url_t urls;
 	char station[550][12];
 	char *stas[550];
 	for (int i = 0; i < 550; i++) {
 		stas[i] = &station[i];
 	}
-	int nsta = dl_readstas(fopt->staname, stas, 550);
+	int nsta = dl_readstas(infile, stas, 550);
 	strcpy(urls.path, path);
-	strcpy(urls.dir, fopt->indir);
+	strcpy(urls.dir, outdir);
 	char *user = "anonymous";
 	char *pwd = "";
 	char *proxy = "";
 	int opts = 12;
 	char msg[1024];
-	dl_exec(ts, te, 86400, 0, 0, &urls, 1, stas, nsta, fopt->indir, user, pwd, proxy, opts, msg, 0);
+	dl_exec(ts, te, 86400, 0, 0, &urls, 1, stas, nsta, outdir, user, pwd, proxy, opts, msg, 0);
 	showmsg(msg);
 	return 1;
 }

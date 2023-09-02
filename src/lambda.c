@@ -106,8 +106,8 @@ static int search(int n, int m, const double *L, const double *D,
     double *S=zeros(n,n),*dist=mat(n,1),*zb=mat(n,1),*z=mat(n,1),*step=mat(n,1);
     
     k=n-1; dist[k]=0.0;						
-	zb[k] = zs[k];			//�����
-	z[k] = ROUND(zb[k]);	//�ͽ��̶�
+	zb[k] = zs[k];			
+	z[k] = ROUND(zb[k]);	
 	y = zb[k] - z[k];
     step[k]=SGN(y);  /* step towards closest integer */
     for (c=0;c<LOOPMAX;c++) {			
@@ -156,7 +156,7 @@ static int search(int n, int m, const double *L, const double *D,
     }
     for (i=0;i<m-1;i++) { /* sort by s */
         for (j=i+1;j<m;j++) {								
-            if (s[i]<s[j]) continue;				//����
+            if (s[i]<s[j]) continue;			
             SWAP(s[i],s[j]);    
             for (k=0;k<n;k++) SWAP(zn[k+i*n],zn[k+j*n]);   
         }
@@ -207,7 +207,7 @@ extern double normcdf(double x)
 extern int lambda(int n, int m, const double *a, const double *Q, double *F, double *s)          
 {
     int i,info;
-    double *L,*D,*Z,*z,*E, P=1.0, pP=0.0;
+    double *L,*D,*Z,*z,*E;
     
     if (n<=0||m<=0) return -1;
     L=zeros(n,n); D=mat(n,1); Z=eye(n); z=mat(n,1); E=mat(n,m);
@@ -216,10 +216,9 @@ extern int lambda(int n, int m, const double *a, const double *Q, double *F, dou
     if (!(info=LD(n,Q,L,D))) {      
 		
         /* lambda reduction (z=Z'*a, Qz=Z'*Q*Z=L'*diag(D)*L) */
-		reduction(n, L, D, Z);			
+		reduction(n, L, D, Z);		        //这里的LD是Qzz分解后的，LD在内部发生变化	
         matmul("TN",n,1,n,1.0,Z,a,0.0,z); /* z=Z'*a */
-		for (i = 0; i < n; i++)
-			P = P*(2 * (normcdf(1 / (2 * sqrt(D[i])))) - 1);
+		
         /* mlambda search 
             z = transformed double-diff phase biases
             L,D = transformed covariance matrix */
@@ -227,11 +226,8 @@ extern int lambda(int n, int m, const double *a, const double *Q, double *F, dou
             
             info=solve("T",Z,E,n,m,F); /* F=Z'\E */					
         }
-		//pP = exp(-0.5*s[0])/exp(-0.5*(s[0]+s[1]+s[2]));
     }
     free(L); free(D); free(Z); free(z); free(E);
-	//if (pP<0.99) s[0] = s[1] = 1;
-	if (P < 0.3 /*|| pP<0.99*/) s[0] = s[1] = 1;
     return info;
 }
 /* lambda reduction ------------------------------------------------------------
@@ -355,7 +351,7 @@ extern int lambda_PAR(rtk_t *rtk, int na, int nb, int m, const double *a, double
 			/* mlambda search */
 			if (!(info = search(k, m, Lp, Dp, zp, F, s))) {			  /* returns 0 if no error */					
 				rtk->sol.ratio = MIN(s[1] / s[0], 999.9);
-				if (rtk->opt.thresar[0] > 0.0 && rtk->sol.ratio >= rtk->opt.thresar[0]) {
+				if (rtk->opt.thresar[3] > 0.0 && rtk->sol.ratio >= rtk->opt.thresar[3]) {
 					for (i = 0; i < k; i++) {
 						dz2[i] = zp[i] - F[i];
 					}

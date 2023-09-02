@@ -1,7 +1,7 @@
 #cmake 版本限制
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.0)
 #工程名
-project(RTKLIB)
+project(PPPINS)
 
 #编译模式 使用 IF(NOT ) ENDIF 放置重复设置
 IF(NOT CMAKE_BUILD_TYPE)
@@ -32,42 +32,120 @@ endif()
 
 add_definitions(-DENAGLO -DENACMP -DENAGAL -DTRACE -D_DEBUG -D_CRT_SECURE_NO_DEPRECATE)
 
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
-# 连接库文件
-LINK_LIBRARIES(m)
-# 运行实例
-add_executable(${PROJECT_NAME} 
-src/comfun.c
-src/download.c
-src/ephemeris.c
-src/fcbfile.c
-src/fcbpos.c
-src/file2nav.c
-src/geoid.c
-src/ionex.c
-src/ionoModel.c
-src/lambda.c
-src/main_nsat.c
-src/main.c
-src/options.c
-src/pntpos7-7.c
-src/postpos1.c
-src/ppp_ar323.c
-src/ppp_corr.c
-src/ppp_out.c
-src/ppp_pos.c
-src/ppp_state.h
-src/preceph7-7.c
-src/rinex2.c
-src/rtkcmn2.c
-src/rtklib.h
-src/rtkpos.c
-src/solution.c
-src/tides.c
-src/tropx.c
+include_directories(
+${PROJECT_SOURCE_DIR}/include
 )
 
+# yaml-cpp
+find_package(yaml-cpp REQUIRED)
 
+# 连接库文件
+LINK_LIBRARIES(m)
 
+set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
+
+add_library(RTKLIB SHARED
+src/options.c
+src/rtkcmn.c
+
+src/filepos.c
+src/rinex.c
+
+src/trop.c
+src/ione.c
+src/preceph.c
+src/ephemeris.c
+
+src/function.c
+src/pntpos.c
+src/ppppos.c
+src/rtkpos.c
+
+src/lambda.c
+src/pppar.c
+
+src/solution.c
+src/download.c
+src/geoid.c
+src/tides.c
+src/convkml.c
+src/tdcpos.c
+
+src/CGNSSConfig.cpp
+src/CGNSSManage.cpp
+)
+if (CMAKE_SYSTEM_NAME MATCHES "Windows") 
+target_link_libraries(RTKLIB Winmm.lib ${YAML_CPP_LIBRARIES}) 
+else()
+target_link_libraries(RTKLIB ${YAML_CPP_LIBRARIES})
+endif()
+
+add_library(PSINS SHARED
+src/PSINS.cpp
+src/CIMUConfig.cpp
+)
+target_link_libraries(PSINS ${YAML_CPP_LIBRARIES})       # YAML默认是静态库
+
+# Build examples
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
+add_executable(downobs 
+Example/Tool/downobs.c
+)
+target_link_libraries(downobs RTKLIB)
+
+add_executable(binfile 
+Example/Tool/binfile.c
+)
+target_link_libraries(binfile RTKLIB)
+
+add_executable(fcbpos
+Example/Tool/fcbpos.c
+)
+target_link_libraries(fcbpos RTKLIB)
+
+add_executable(difpos
+Example/Tool/difpos.c
+)
+target_link_libraries(difpos RTKLIB)
+
+add_executable(ionpos
+Example/Tool/ionpos.c
+)
+target_link_libraries(ionpos RTKLIB)
+
+add_executable(selsta
+Example/Tool/selsta.c
+)
+target_link_libraries(selsta RTKLIB)
+
+add_executable(ra
+Example/Tool/ra.c
+)
+target_link_libraries(ra RTKLIB)
+
+add_executable(qual
+Example/Tool/qual.c
+)
+target_link_libraries(qual RTKLIB)
+
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
+add_executable(PPP 
+Example/GNSS/PPP.c
+)
+target_link_libraries(PPP RTKLIB)
+
+add_executable(RTK 
+Example/GNSS/RTK.c
+)
+target_link_libraries(RTK RTKLIB)
+
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
+add_executable(GNSSINS 
+Example/GNSS-INS/CKFApp.h
+Example/GNSS-INS/CKFApp.cpp
+Example/GNSS-INS/GNSSINS.cpp
+)
+
+target_link_libraries(GNSSINS RTKLIB PSINS)
 
 

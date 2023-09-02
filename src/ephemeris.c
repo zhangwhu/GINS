@@ -283,7 +283,7 @@ extern void eph2pos(gtime_t time, const eph_t *eph, double *rs, double *dts,
 	*dts -= 2.0*sqrt(mu*eph->A)*eph->e*sinE / SQR(CLIGHT);
 
 	/* position and clock error variance */
-	*var = var_uraeph(sys, eph->sva);				//ÀûÓÃsvaÊµÏÖ·½²îÉè¶¨
+	*var = var_uraeph(sys, eph->sva);				//ï¿½ï¿½ï¿½ï¿½svaÊµï¿½Ö·ï¿½ï¿½ï¿½ï¿½è¶¨
 }
 /* glonass orbit differential equations --------------------------------------*/
 static void deq(const double *x, double *xdot, const double *acc)
@@ -729,7 +729,7 @@ extern int satpos(gtime_t time, gtime_t teph, int sat, int ephopt,
 *          satellite position is referenced to antenna phase center
 *          satellite clock does not include code bias correction (tgd or bgd)
 *          any pseudorange and broadcast ephemeris are always needed to get
-*          signal transmission timeÎÀÐÇ·¢ÉäÐÅºÅÊ±¿Ì
+*          signal transmission timeï¿½ï¿½ï¿½Ç·ï¿½ï¿½ï¿½ï¿½Åºï¿½Ê±ï¿½ï¿½
 *-----------------------------------------------------------------------------*/
 extern void satposs(gtime_t teph, const obsd_t *obs, int n, const nav_t *nav,
 	int ephopt, double *rs, double *dts, double *var, int *svh)
@@ -763,8 +763,7 @@ extern void satposs(gtime_t teph, const obsd_t *obs, int n, const nav_t *nav,
 		time[i] = timeadd(time[i], -dt);
 
 		/* satellite position and clock at transmission time */
-		if (!satpos(time[i], teph, obs[i].sat, ephopt, nav, rs + i * 6, dts + i * 2, var + i,
-			svh + i)) {
+		if (!satpos(time[i], teph, obs[i].sat, ephopt, nav, rs + i * 6, dts + i * 2, var + i, svh + i)) {
 			trace(3, "no ephemeris %s sat=%2d\n", time_str(time[i], 3), obs[i].sat);			
 			continue;
 		}

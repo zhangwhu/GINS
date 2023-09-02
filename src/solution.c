@@ -821,7 +821,7 @@ extern int readsolt(char *files[], int nfile, gtime_t ts, gtime_t te,
         
         /* read solution data */
         if (!readsoldata(fp,ts,te,tint,qflag,&opt,solbuf)) {
-            trace(2,"readsolt: no solution in %s\n",files[i]);
+            trace(1,"readsolt: no solution in %s\n",files[i]);
         }
         fclose(fp);
     }
@@ -1182,10 +1182,10 @@ static int outenu(unsigned char *buff, const char *s, const sol_t *sol,
     soltocov(sol,P);
     covenu(pos,P,Q);
     ecef2enu(pos,rr,enu);
-    p+=sprintf(p,"%s%s%14.4f%s%14.4f%s%14.4f%s%3d%s%3d%s%8.4f%s%8.4f%s%8.4f%s%8.4f%s%8.4f%s%8.4f%s%6.2f%s%6.1f%4d%4d\n",
+    p+=sprintf(p,"%s%s%14.4f%s%14.4f%s%14.4f%s%3d%s%3d%s%8.4f%s%8.4f%s%8.4f%s%8.4f%s%8.4f%s%8.4f%s%6.2f%s%6.1f\n",
                s,sep,enu[0],sep,enu[1],sep,enu[2],sep,sol->stat,sep,sol->ns,sep,
                SQRT(Q[0]),sep,SQRT(Q[4]),sep,SQRT(Q[8]),sep,sqvar(Q[1]),
-			   sep, sqvar(Q[5]), sep, sqvar(Q[2]), sep, sol->age, sep, sol->ratio, sol->ratio_ns, sol->ratio_ms);
+			   sep, sqvar(Q[5]), sep, sqvar(Q[2]), sep, sol->age, sep, sol->ratio);
     return p-(char *)buff;
 }
 /* output solution in the form of nmea RMC sentence --------------------------*/
@@ -1372,8 +1372,7 @@ extern int outnmea_gsv(unsigned char *buff, const sol_t *sol,
                 if (satsys(sats[k],&prn)==SYS_SBS) prn+=33-MINPRNSBS;
                 az =ssat[sats[k]-1].azel[0]*R2D; if (az<0.0) az+=360.0;
                 el =ssat[sats[k]-1].azel[1]*R2D;
-                snr=ssat[sats[k]-1].snr[0]*0.25;
-                p+=sprintf(p,",%02d,%02.0f,%03.0f,%02.0f",prn,el,az,snr);
+                p+=sprintf(p,",%02d,%02.0f,%03.0f",prn,el,az);
             }
             else p+=sprintf(p,",,,,");
         }
@@ -1397,8 +1396,7 @@ extern int outnmea_gsv(unsigned char *buff, const sol_t *sol,
                 satsys(sats[k],&prn); prn+=64; /* 65-99 */
                 az =ssat[sats[k]-1].azel[0]*R2D; if (az<0.0) az+=360.0;
                 el =ssat[sats[k]-1].azel[1]*R2D;
-                snr=ssat[sats[k]-1].snr[0]*0.25;
-                p+=sprintf(p,",%02d,%02.0f,%03.0f,%02.0f",prn,el,az,snr);
+                p+=sprintf(p,",%02d,%02.0f,%03.0f,",prn,el,az);
             }
             else p+=sprintf(p,",,,,");
         }
@@ -1422,8 +1420,7 @@ extern int outnmea_gsv(unsigned char *buff, const sol_t *sol,
                 satsys(sats[k],&prn); /* 1-36 */
                 az =ssat[sats[k]-1].azel[0]*R2D; if (az<0.0) az+=360.0;
                 el =ssat[sats[k]-1].azel[1]*R2D;
-                snr=ssat[sats[k]-1].snr[0]*0.25;
-                p+=sprintf(p,",%02d,%02.0f,%03.0f,%02.0f",prn,el,az,snr);
+                p+=sprintf(p,",%02d,%02.0f,%03.0f,",prn,el,az);
             }
             else p+=sprintf(p,",,,,");
         }
@@ -1437,7 +1434,7 @@ extern int outnmea_gsv(unsigned char *buff, const sol_t *sol,
 * output processing options to buffer
 * args   : unsigned char *buff IO output buffer
 *          prcopt_t *opt    I   processign options
-* return : number of output bytes£¨prcopt_tÊý×Öº¬Òå£©
+* return : number of output bytesï¿½ï¿½prcopt_tï¿½ï¿½ï¿½Öºï¿½ï¿½å£©
 *-----------------------------------------------------------------------------*/
 extern int outprcopts(unsigned char *buff, const prcopt_t *opt)
 {
@@ -1487,9 +1484,6 @@ extern int outprcopts(unsigned char *buff, const prcopt_t *opt)
     }
     if (PMODE_KINEMA<=opt->mode&&opt->mode<=PMODE_FIXED) {
         p+=sprintf(p,"%s amb res   : %s\n",COMMENTH,s8[opt->modear]);
-        if (opt->navsys&SYS_GLO) {
-            p+=sprintf(p,"%s amb glo   : %s\n",COMMENTH,s9[opt->glomodear]);
-        }
         if (opt->thresar[0]>0.0) {
             p+=sprintf(p,"%s val thres : %.1f\n",COMMENTH,opt->thresar[0]);
         }
@@ -1512,7 +1506,7 @@ extern int outprcopts(unsigned char *buff, const prcopt_t *opt)
 *          solopt_t *opt    I   solution options
 * return : number of output bytes
 *-----------------------------------------------------------------------------*/
-extern int outsolheads(unsigned char *buff, const solopt_t *opt)
+extern int outsolheads(unsigned char *buff, const solopt_t *opt)        
 {
     const char *s1[]={"WGS84","Tokyo"},*s2[]={"ellipsoidal","geodetic"};
     const char *s3[]={"GPST","UTC ","JST "},*sep=opt2sep(opt);
@@ -1743,3 +1737,43 @@ extern void outsolex(FILE *fp, const sol_t *sol, const ssat_t *ssat,
         fwrite(buff,n,1,fp);
     }
 }
+
+/* output solution header -------------------------------------------------------------*/
+extern void outheader(FILE *fp, const prcopt_t *popt, const solopt_t *sopt)
+{
+	const char *s1[] = {"GPST", "UTC", "JST"};
+	gtime_t ts, te;
+	double t1, t2;
+	int i, j, w1, w2;
+	char s2[32], s3[32];
+	const char *sep = sopt->sep;
+
+	if (sopt->posf == SOLF_NMEA || sopt->posf == SOLF_STAT) return;
+	if (sopt->outhead) {
+		fprintf(fp, "%s program   : RTKLIB ver.%s %s\n", COMMENTH, VER_RTKLIB, PATCH_LEVEL);
+
+		ts = popt->ts;
+		te = popt->te;
+		t1 = time2gpst(ts, &w1);
+		t2 = time2gpst(te, &w2);
+		if (sopt->times >= 1) ts = gpst2utc(ts);
+		if (sopt->times >= 1) te = gpst2utc(te);
+		if (sopt->times == 2) ts = timeadd(ts, 9 * 3600.0);
+		if (sopt->times == 2) te = timeadd(te, 9 * 3600.0);
+		time2str(ts, s2, 1);
+		time2str(te, s3, 1);
+		fprintf(fp, "%s obs start : %s %s (week%04d %8.1fs)\n",COMMENTH,s2,s1[sopt->times],w1,t1);
+		fprintf(fp, "%s obs end   : %s %s (week%04d %8.1fs)\n",COMMENTH,s3,s1[sopt->times],w2,t2);
+	}
+	if (sopt->outopt) {
+		outprcopt(fp, popt);
+	}
+
+	if (sopt->posf == SOLF_ENU) {
+		fprintf(fp, "%s ref pos   :%14.4f%s%14.4f%s%14.4f\n",COMMENTH,popt->ru[0],sep,popt->ru[1],sep,popt->ru[2]);
+	}
+	if (sopt->outhead || sopt->outopt)
+		fprintf(fp, "%s\n", COMMENTH);
+	outsolhead(fp, sopt);
+}
+
